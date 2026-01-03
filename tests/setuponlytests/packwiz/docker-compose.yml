@@ -1,0 +1,25 @@
+services:
+  web:
+    image: nginx
+    volumes:
+      - ./web:/usr/share/nginx/html
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost/pack.toml"]
+      interval: 3s
+      timeout: 5s
+      retries: 3
+  mc:
+    depends_on:
+      web:
+        condition: service_healthy
+    image: ${IMAGE_TO_TEST:-itzg/minecraft-server}
+    environment:
+      EULA: "true"
+      PACKWIZ_URL: http://web/pack.toml
+      TYPE: CUSTOM
+      CUSTOM_SERVER: /servers/fake.jar
+      VERSION: 1.19
+      DEBUG_HELPER: "true"
+    volumes:
+      - ./data:/data
+      - ./fake.jar:/servers/fake.jar

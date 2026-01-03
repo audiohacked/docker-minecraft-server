@@ -1,0 +1,36 @@
+services:
+  mc:
+    # make sure this java version matches with pack java version
+    image: itzg/minecraft-server:java25
+    tty: true
+    stdin_open: true
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: "TRUE"
+      TYPE: CUSTOM
+      GENERIC_PACKS: GT_New_Horizons_2.8.0_Server_Java_17-25
+      GENERIC_PACKS_SUFFIX: .zip
+      GENERIC_PACKS_PREFIX: https://downloads.gtnewhorizons.com/ServerPacks/
+      # if this isn't true, then the container tries to download the modpack every run
+      SKIP_GENERIC_PACK_UPDATE_CHECK: "true"
+      MEMORY: 6G
+      # Make sure that this matches what is in your pack's startserver bash file
+      JVM_OPTS: "-Dfml.readTimeout=180 @java9args.txt"
+      # You may choose to instead download a specific jar version yourself, and change this value to the local jar.
+      # Refer to https://docker-minecraft-server.readthedocs.io/en/latest/configuration/misc-options/#running-with-a-custom-server-jar
+      CUSTOM_SERVER: "https://github.com/GTNewHorizons/lwjgl3ify/releases/download/2.1.16/lwjgl3ify-2.1.16-forgePatches.jar"
+      # Set server.properties according to GTNH server defaults
+      MOTD: "GT:New Horizons 2.8.0"
+      DIFFICULTY: "hard"
+      ENABLE_COMMAND_BLOCK: "true"
+      SPAWN_PROTECTION: 1
+      VIEW_DISTANCE: 8
+      MODE: 0
+      LEVEL_TYPE: "rwg"
+      ALLOW_FLIGHT: "TRUE"
+    volumes:
+      # attach a managed volume, change to a relative or absolute host directory if needed
+      - mc-data:/data
+volumes:
+  mc-data:

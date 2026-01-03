@@ -1,0 +1,24 @@
+services:
+  mc:
+    image: itzg/minecraft-server
+    tty: true
+    stdin_open: true
+    ports:
+      - "25565:25565"
+    environment:
+      EULA: true
+      ALLOW_FLIGHT: true
+      MOD_PLATFORM: AUTO_CURSEFORGE
+      CF_API_KEY: ${CF_API_KEY}
+      CF_SLUG: craftoria
+      MOTD: |
+        A %TYPE% server on %VERSION%
+        running %MODPACK_NAME% %MODPACK_VERSION%
+      MEMORY: 8G
+    volumes:
+      # Use managed volume by default, but can change to a relative path like
+      # ./data:/data
+      # to use a host directory
+      - mc-data:/data
+volumes:
+  mc-data:

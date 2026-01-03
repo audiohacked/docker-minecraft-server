@@ -6,38 +6,60 @@ set -o pipefail
 set -e
 isDebugging && set -x
 
-requireVar VANILLA_VERSION
+resolveVersion
 : "${MOHIST_BUILD:=lastSuccessfulBuild}"
 
-mohistJobs=https://ci.codemc.io/job/MohistMC/job/
-mohistJob=${mohistJobs}Mohist-${VANILLA_VERSION}/
+# Docs at https://mohistmc.com/mohistmc-api
+mohistType="${TYPE,,}"
+mohistApiUrl="https://api.mohistmc.com/project/${mohistType}"
+mohistDownloadsPage="https://mohistmc.com/downloadSoftware?project=${mohistType}"
 
-if ! get --exists "${mohistJob}"; then
-  log "ERROR: mohist builds do not exist for ${VANILLA_VERSION}"
-  log "       check https://ci.codemc.io/job/MohistMC/ for available versions"
-  log "       and set VERSION accordingly"
-  exit 1
+if [[ "${MOHIST_BUILD}" != "lastSuccessfulBuild" ]] && [[ "${VERSION,,}" != latest ]] && [[ -f "/data/${mohistType}-${VERSION}-${MOHIST_BUILD}-server.jar" ]]; then
+  log "Skipping Mohist build lookup since server jar exists"
+  SERVER="/data/${mohistType}-${VERSION}-${MOHIST_BUILD}-server.jar"
+else
+  if ! get --exists "${mohistApiUrl}/${VERSION}/builds"; then
+    logError "${mohistType} builds do not exist for ${VERSION}"
+    logError "       check ${mohistDownloadsPage} for available versions"
+    logError "       and set VERSION accordingly"
+    exit 1
+  fi
+
+  if [[ "${MOHIST_BUILD}" == "lastSuccessfulBuild" ]]; then
+    # Get the latest build number from the API
+    if ! buildNumber=$(
+      get --json-path '$[0].id' "${mohistApiUrl}/${VERSION}/builds"
+    ); then
+      logError "failed to list ${mohistType} builds for ${VERSION}"
+      exit 1
+    fi
+    MOHIST_BUILD="${buildNumber}"
+  fi
+
+  downloadUrl="${mohistApiUrl}/${VERSION}/builds/${MOHIST_BUILD}/download"
+
+  if [[ -z "${downloadUrl}" ]]; then
+    logError "Could not find build ${MOHIST_BUILD} for version ${VERSION}"
+    logError "       check ${mohistDownloadsPage} for available versions"
+    logError "       and set VERSION accordingly"
+    exit 1
+  fi
+
+  SERVER="/data/${mohistType}-${VERSION}-${MOHIST_BUILD}-server.jar"
+  get --skip-existing -o "${SERVER}" "${downloadUrl}"
 fi
 
-buildRelPath=$(
-  get --json-path '$.artifacts[0].relativePath' "${mohistJob}${MOHIST_BUILD}/api/json"
-)
-
-baseName=$(basename "${buildRelPath}")
-if [[ ${baseName} != *-server.jar* ]]; then
-  log "ERROR: mohist build for ${VANILLA_VERSION} is not a valid server jar, found ${baseName}"
-  log "       check https://ci.codemc.io/job/MohistMC/ for available versions"
-  log "       and set VERSION accordingly"
-  exit 1
+if [[ "${mohistType}" == "mohist" ]]; then
+    export HYBRIDTYPE=forge
+elif [[ "${mohistType}" == "youer" ]]; then
+    export HYBRIDTYPE=neoforge
+elif [[ "${mohistType}" == "banner" ]]; then
+    export HYBRIDTYPE=fabric
+else
+    log "Unknown server type"
 fi
 
-export SERVER="/data/${baseName}"
-
-if [ ! -f "${SERVER}" ]; then
-  log "Downloading ${baseName}"
-  get -o "${SERVER}" "${mohistJob}${MOHIST_BUILD}/artifact/${buildRelPath}"
-fi
-
+export SERVER
 export FAMILY=HYBRID
 
-exec "${SCRIPTS:-$(dirname "$0")}/start-setupWorld" "$@"
+exec "$(dirname "$0")/start-spiget" "$@"
