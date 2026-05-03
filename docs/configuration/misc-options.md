@@ -77,9 +77,15 @@ The openj9 image tags include specific variables to simplify configuration:
 - `-e TUNE_NURSERY_SIZES=TRUE` : configures nursery sizes where the initial size is 50%
   of the `MAX_MEMORY` and the max size is 80%.
 
-## Customizing log4j2 configuration
+## Customize Minecraft server logging
 
-The image now uses a templated log4j2 configuration based on PaperMC's logging setup, which is automatically applied for versions that don't require Log4j security patches. This configuration provides rolling logs and advanced logging features by default.
+The image can use a templated log4j2 configuration based on PaperMC's logging setup, which is automatically applied for versions that don't require Log4j security patches. This configuration provides rolling logs and advanced logging features by default.
+
+Set the environment variable `GENERATE_LOG4J2_CONFIG` to "true" to enable the following features.
+
+!!! note
+
+    This configures the server logging only. To diagnose container startup, set the `DEBUG` environment variable to "true".
 
 ### Customization via environment variables
 
@@ -160,7 +166,7 @@ such as:
 
 ## HTTP Proxy
 
-You may configure the use of an HTTP/HTTPS proxy by passing the proxy's "host:port" via the environment variable `PROXY`. In [the example compose file](https://github.com/itzg/docker-minecraft-server/blob/master/examples/docker-compose-proxied.yml) it references a Squid proxy. The host and port can be separately passed via the environment variables `PROXY_HOST` and `PROXY_PORT`. A `|` delimited list of hosts to exclude from proxying can be passed via `PROXY_NON_PROXY_HOSTS`.
+You may configure the use of an HTTP/HTTPS proxy by passing the proxy's "host:port" via the environment variable `PROXY`. In [the example compose file](https://github.com/itzg/docker-minecraft-server/blob/master/examples/proxied/compose.yml) it references a Squid proxy. The host and port can be separately passed via the environment variables `PROXY_HOST` and `PROXY_PORT`. A `|` delimited list of hosts to exclude from proxying can be passed via `PROXY_NON_PROXY_HOSTS`.
 
 ## Using "noconsole" option
 

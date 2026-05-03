@@ -101,6 +101,7 @@
     "lootbeams",
     "magnesium-extras",
     "make-bubbles-pop",
+    "mekalus-oculus-fork-with-fixed-mekanism-mekasuit",
     "menumobs",
     "minecraft-rich-presence",
     "mining-speed-tooltips",
@@ -109,6 +110,7 @@
     "mouse-tweaks",
     "neat",
     "nekos-enchanted-books",
+    "neoculus",
     "no-nv-flash",
     "no-recipe-book",
     "not-enough-animations",
@@ -142,6 +144,7 @@
     "smart-hud",
     "smithing-template-viewer",
     "smooth-font",
+    "smooth-swapping",
     "smoothwater",
     "sodium",
     "sodium-extra",
@@ -209,6 +212,11 @@
     },
     "valhelsia-5": {
       "excludes": ["modernfix"]
+    },
+    "wolds-vaults": {
+      "forceIncludes": [
+        "just-enough-resources-jer"
+      ]
     }
   }
 }
