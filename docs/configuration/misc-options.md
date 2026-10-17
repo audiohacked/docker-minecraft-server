@@ -22,6 +22,15 @@ docker run -d --pull=always \
     -p 25565:25565 -e EULA=TRUE --name mc itzg/minecraft-server
 ```
 
+## Clean server libraries
+
+By default, supported server types remove stale server libraries during installation by setting `CLEAN_SERVER_LIBRARIES` to `true`. Set `CLEAN_SERVER_LIBRARIES` to `false` to disable this cleanup if it causes unexpected behavior.
+
+Currently, library cleanup is supported by
+
+- `TYPE=PAPER`
+- `TYPE=PURPUR`
+
 ## Running as alternate user/group ID
 
 By default, the container will switch to and run the Minecraft server as user ID 1000 and group ID 1000; however, that can be changed by setting the environment variables `UID` and `GID`.
@@ -43,6 +52,8 @@ If this behavior interferes with the log content, then disable TTY or remove the
 ## Server Shutdown Options
 
 To allow time for players to finish what they're doing during a graceful server shutdown, set `STOP_SERVER_ANNOUNCE_DELAY` to a number of seconds to delay after an announcement is posted by the server.
+
+To set a custom command to run at the start of this delay period, set `STOP_SERVER_DELAY_COMMAND` to the full command. This will run in place of the announcement.
 
 !!! warning "Increase stop grace period"
 
@@ -168,6 +179,10 @@ such as:
 
 You may configure the use of an HTTP/HTTPS proxy by passing the proxy's "host:port" via the environment variable `PROXY`. In [the example compose file](https://github.com/itzg/docker-minecraft-server/blob/master/examples/proxied/compose.yml) it references a Squid proxy. The host and port can be separately passed via the environment variables `PROXY_HOST` and `PROXY_PORT`. A `|` delimited list of hosts to exclude from proxying can be passed via `PROXY_NON_PROXY_HOSTS`.
 
+## Prefer IPv6 Addresses and Stack
+
+The image can be configured to prefer IPv6 addresses and stack by setting the environment variable `PREFER_IPV6` to "true". This will ensure the Java properties `java.net.preferIPv6Addresses` and `java.net.preferIPv6Stack` are set accordingly for mc-image-helper and the Minecraft server process.
+
 ## Using "noconsole" option
 
 Some older versions (pre-1.14) of Spigot required `--noconsole` to be passed when detaching stdin, which can be done by setting `-e CONSOLE=FALSE`.
@@ -187,6 +202,29 @@ Be sure to also increase the shutdown timeout described [here for docker compose
 
 If you are using a host-attached data directory, then you can have the image setup the Minecraft server files and stop prior to launching the server process by setting `SETUP_ONLY` to `true`. 
     
+## Custom server runner
+
+By default, the image finishes startup by exec'ing [mc-server-runner](https://github.com/itzg/mc-server-runner) to run the Minecraft server itself. This can be replaced by setting the environment variable `SERVER_RUNNER`. The arguments passed will start with ones specific to mc-server-runner, followed by `--`, and then the actual `java -jar` arguments or equivalent server entry script, such as `run.sh` for Forge. 
+
+> [!TIP]
+> The `SERVER_RUNNER` variable is expanded when passed to `exec` so that `mc-server-runner` can be wrapped by another executable that is mounted into the container.
+
+## Pre-start script
+
+To run something of your own after the image has finished setting up the server files and just before it starts the server, set `PRE_START_SCRIPT` to the path of an executable file that you have mounted into the container. The image runs it directly (not through a shell) and waits for it to finish. It runs as the user the server runs as, from the server's working directory, with the same environment the server gets. If it exits with a non-zero status, the container exits without starting the server.
+
+For example, a script that waits for plugin jars that another process is still downloading:
+
+```yaml
+    environment:
+      PRE_START_SCRIPT: /hooks/wait-for-plugins
+    volumes:
+      - ./hooks:/hooks:ro
+```
+
+> [!WARNING]
+> The image does not guarantee that any particular command is available to the script, and it may change between image versions. Keeping the script working is up to you.
+
 ## Enable Flare Flags
     
 To enable the JVM flags required to fully support the [Flare profiling suite](https://blog.airplane.gg/flare), set the following variable:

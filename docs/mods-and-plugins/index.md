@@ -42,6 +42,19 @@ There are optional volume paths that can be attached to supply content to be cop
 `/mods`
 : content in this directory is synchronized into `/data/mods` for server types that use mods, [as described above](#mods-vs-plugins). For special cases, the source can be changed by setting `COPY_MODS_SRC` and destination by setting `COPY_MODS_DEST`.
 
+!!! example "Loading mods from a local directory"
+
+    This is the most basic example, where `./mods` is mounted as `/mods`. If the directory with the server's mods is located somewhere else, `./mods` can be modified accordingly.
+
+    ```yaml
+        environment:
+          EULA: "TRUE"
+          TYPE: "NEOFORGE"
+        volumes:
+        - "./data:/data"
+        - "./mods:/mods"
+    ```
+
 `/config`
 : contents are synchronized into `/data/config` by default, but can be changed with `COPY_CONFIG_DEST`. For example, `-v ./config:/config -e COPY_CONFIG_DEST=/data` will allow you to copy over files like `bukkit.yml` and so on directly into the server directory. The source can be changed by setting `COPY_CONFIG_SRC`. Set `SYNC_SKIP_NEWER_IN_DESTINATION=false` if you want files from `/config` to take precedence over newer files in `/data/config`.
 
@@ -52,6 +65,8 @@ If you want old mods/plugins to be removed before the content is brought over fr
 You can also specify the `REMOVE_OLD_MODS_DEPTH` (default is 16) variable to only delete files up to a certain level.
 
 For example: `-e REMOVE_OLD_MODS=TRUE -e REMOVE_OLD_MODS_INCLUDE="*.jar" -e REMOVE_OLD_MODS_DEPTH=1` will remove all old jar files that are directly inside the `plugins/` or `mods/` directory.
+
+To remove all files in the `/data/config` directory before a modpack is downloaded and unpacked, set `REMOVE_OLD_CONFIGS=TRUE`. This is useful when a modpack update would otherwise override locally customized configuration files. The removal process can be fine tuned with `REMOVE_OLD_CONFIGS_INCLUDE` and `REMOVE_OLD_CONFIGS_EXCLUDE` (comma separated lists of file glob patterns, defaults to `*` so everything is removed) and `REMOVE_OLD_CONFIGS_DEPTH` (default 16). The target directory can be changed with `CONFIG_OUT_DIR` (default `/data/config`).
 
 These paths work well if you want to have a common set of modules in a separate location, but still have multiple worlds with different server requirements in either persistent volumes or a downloadable archive.
 
@@ -138,6 +153,26 @@ GENERIC_PACKS_SUFFIX=.zip
 
 would expand to `https://cdn.example.org/configs-v9.0.1.zip,https://cdn.example.org/mods-v4.3.6.zip`.
 
+### Generic packs from an OCI registry
+
+An entry can also reference a pack stored as an [OCI](https://opencontainers.org/) artifact in a container registry by prefixing it with `oci://`. The reference may use a tag or an immutable `@sha256:` digest:
+
+```
+GENERIC_PACKS=oci://ghcr.io/itzg/oci-modpack-template/tech:latest,oci://ghcr.io/itzg/oci-modpack-template/magic:latest
+```
+
+OCI, URL, and local-path entries can be mixed in the same list and are applied in the order given. Each artifact's layers are pulled into a content-addressed cache under `/data/packs/oci`, so a digest already on disk (for example a base layer shared between packs) is not downloaded again. `GENERIC_PACKS_PREFIX`/`GENERIC_PACKS_SUFFIX`, `GENERIC_PACKS_DISABLE_MODS`, and the update/checksum behaviour below all apply to OCI entries exactly as they do to URLs.
+
+The artifact must be a Minecraft modpack artifact (artifact type `application/vnd.itzg.minecraft.modpack.v1+json` with `…modpack.layer.v1.tar+gzip` layers); any other reference is rejected before its contents touch `/data`. Validation and registry authentication are handled by `mc-image-helper`.
+
+For a private registry, point `GENERIC_PACKS_OCI_AUTH_FILE` at a registry login file (the `auth.json`/`config.json` produced by `docker login`, `podman login`, etc.):
+
+```
+GENERIC_PACKS_OCI_AUTH_FILE=/run/secrets/registry-auth.json
+```
+
+When it is unset, a credentials file at `~/.config/containers/auth.json` or `~/.docker/config.json` is used if present, otherwise the pull is anonymous.
+
 If applying large generic packs, the update can be time-consuming. To skip the update set `SKIP_GENERIC_PACK_UPDATE_CHECK` to "true". Conversely, the generic pack(s) can be forced to be applied by setting `FORCE_GENERIC_PACK_UPDATE` to "true".
 
 The most time-consuming portion of the generic pack update is generating and comparing the SHA1 checksum. To skip the checksum generation, set `SKIP_GENERIC_PACK_CHECKSUM` to "true".
@@ -155,6 +190,54 @@ Disabling mods within docker compose files:
         mod1.jar
         mod2.jar
 ```
+
+### Loading container configuration from a pack
+
+A pack can ship its own container configuration so that the server type, version,
+and other variables travel with the pack rather than being declared by the user.
+At startup, before `TYPE` is dispatched, the container can load environment
+variables from a file on disk, a URL, an entry inside an archive, or from the
+`.env` of each `GENERIC_PACK(S)` entry.
+
+- `LOAD_ENV_FROM_GENERIC_PACK`: when `true`, each entry in `GENERIC_PACKS` (after
+  `GENERIC_PACKS_PREFIX`/`SUFFIX` expansion) is probed for a top-level `.env`
+  and each one found is sourced in the same order the packs are applied (later
+  packs override earlier ones, matching the layering of the unpack itself). Packs
+  without a `.env` are skipped without error. URLs are downloaded into
+  `/data/packs/` and reused by the regular generic-pack unpack step, so they are
+  not fetched twice.
+- `LOAD_ENV_FROM_FILE`: container path or URL of a shell-style env file (one
+  `KEY=VALUE` per line). Comments and blank lines are allowed.
+- `LOAD_ENV_FROM_ARCHIVE`: container path or URL of a zip/tar archive containing
+  an env file. The entry is sourced into the environment.
+- `LOAD_ENV_FROM_ARCHIVE_ENTRY`: relative path of the env file inside the archive.
+  Defaults to `.env`.
+
+These can be combined. Load order is: generic packs first, then
+`LOAD_ENV_FROM_FILE`, then `LOAD_ENV_FROM_ARCHIVE` — later loads override
+earlier ones, and all of them **override** values passed via `docker run -e` (or
+compose `environment:`), so the pack's declared values win.
+
+```shell
+docker run -d \
+  -e EULA=TRUE \
+  -e GENERIC_PACK=https://cdn.example.org/my-pack.zip \
+  -e LOAD_ENV_FROM_GENERIC_PACK=true \
+  itzg/minecraft-server
+```
+
+Where `my-pack.zip` contains a `.env` at its root such as:
+
+```env
+TYPE=FABRIC
+VERSION=1.21.1
+FABRIC_LOADER_VERSION=0.16.0
+```
+
+!!! warning
+    The env file is sourced by `bash`, so any shell syntax it contains will be
+    evaluated. Only point these variables at sources you trust. `EULA` cannot be
+    set this way — it is checked before the env file is loaded.
 
 ## Mods/plugins list
 

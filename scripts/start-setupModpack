@@ -9,22 +9,18 @@ set -e -o pipefail
 : "${PLUGINS_FILE:=}"
 : "${REMOVE_OLD_MODS_DEPTH:=1} "
 : "${REMOVE_OLD_MODS_INCLUDE:=*.jar,*-version.json}"
-: "${CF_API_KEY_FILE:=}" # Path to file containing CurseForge API key
+: "${REMOVE_OLD_CONFIGS:=false}"
+: "${CONFIG_OUT_DIR:=/data/config}"
+: "${REMOVE_OLD_CONFIGS_DEPTH:=16}"
+: "${REMOVE_OLD_CONFIGS_INCLUDE:=*}"
+: "${REMOVE_OLD_CONFIGS_EXCLUDE:=}"
+: "${CF_USE_HTTP2:=false}" # CF downloads are faster with HTTP 1.1
 : "${MODRINTH_LOADER:=}"
 
 # shellcheck source=start-utils
 . "$(dirname "$0")/start-utils"
-isDebugging && set -x
 
-if [[ -n ${CF_API_KEY_FILE} ]]; then
-  if [[ -r "${CF_API_KEY_FILE}" ]]; then
-    CF_API_KEY="$(cat "${CF_API_KEY_FILE}")"
-    export CF_API_KEY
-  else
-    logError "CF_API_KEY_FILE is not readable: ${CF_API_KEY_FILE}"
-    exit 1
-  fi
-fi
+isDebugging && set -x
 
 sum_file=/data/.generic_pack.sum
 # Remove old mods/plugins
@@ -32,6 +28,10 @@ if isTrue "${REMOVE_OLD_MODS}" && [ -z "${MODS_FILE}" ]; then
   removeOldMods "$MODS_OUT_DIR"
   removeOldMods "$PLUGINS_OUT_DIR"
   rm -f "$sum_file"
+fi
+
+if isTrue "${REMOVE_OLD_CONFIGS}"; then
+  removeOldConfigs "$CONFIG_OUT_DIR"
 fi
 
 function handlePackwiz() {
@@ -49,6 +49,16 @@ function handlePackwiz() {
     if ! java -cp "${packwizInstaller}" link.infra.packwiz.installer.Main -s server "${PACKWIZ_URL}"; then
       logError "Failed to run packwiz installer"
       exit 1
+    fi
+
+    # packwiz may have just downloaded/updated the env file referenced by
+    # LOAD_ENV_FROM_FILE. The initial load in start-configuration happened
+    # before this point, so re-load it now to pick up the pack's values for
+    # the remaining setup stages (server.properties, JVM args, etc.).
+    if [[ ${LOAD_ENV_FROM_FILE:-} ]]; then
+      if ! loadEnvFromFile "${LOAD_ENV_FROM_FILE}"; then
+        exit 1
+      fi
     fi
   fi
 }
@@ -76,11 +86,13 @@ if [[ "$MODPACK" ]]; then
     mkdir -p "$PLUGINS_OUT_DIR"
     if ! unzip -o -d "$PLUGINS_OUT_DIR" /tmp/modpack.zip; then
       logError "Failed to unzip the modpack from ${MODPACK}"
+      exit 2
     fi
   else
     mkdir -p "$MODS_OUT_DIR"
     if ! unzip -o -d "$MODS_OUT_DIR" /tmp/modpack.zip; then
       logError "Failed to unzip the modpack from ${MODPACK}"
+      exit 2
     fi
   fi
   rm -f /tmp/modpack.zip
@@ -170,7 +182,38 @@ function handleGenericPacks() {
     packFiles=()
     for packEntry in "${packs[@]}"; do
       pack="${GENERIC_PACKS_PREFIX}${packEntry}${GENERIC_PACKS_SUFFIX}"
-      if isURL "${pack}"; then
+      if isOCIRef "${pack}"; then
+        # All OCI refs share one staging dir so layers common to multiple
+        # sibling artifacts (the point of layered distribution) are pulled
+        # exactly once across all of GENERIC_PACKS.
+        mkdir -p /data/packs/oci /data/.tmp
+        log "Pulling OCI generic pack from $pack"
+        # A list file is used rather than stdout because mc-image-helper INFO
+        # logs share that stream; it holds one absolute layer path per line in
+        # apply order.
+        layerListFile=$(mktemp -p /data/.tmp)
+        ociArgs=(install-oci-pack
+          --ref "$pack"
+          --output-directory /data/packs/oci
+          --filename-strategy digest
+          --layer-list-file "$layerListFile")
+        if [[ "${GENERIC_PACKS_OCI_AUTH_FILE:-}" ]]; then
+          ociArgs+=(--auth-file "${GENERIC_PACKS_OCI_AUTH_FILE}")
+        fi
+        if ! mc-image-helper "${ociArgs[@]}"; then
+          logError "Failed to pull OCI generic pack $pack"
+          logError "(OCI generic packs require mc-image-helper with install-oci-pack support)"
+          rm -f "$layerListFile"
+          exit 2
+        fi
+        mapfile -t ociLayers < "$layerListFile"
+        rm -f "$layerListFile"
+        if [ ${#ociLayers[@]} -eq 0 ]; then
+          logError "OCI generic pack $pack resolved to zero layers"
+          exit 2
+        fi
+        packFiles+=("${ociLayers[@]}")
+      elif isURL "${pack}"; then
         mkdir -p /data/packs
         log "Downloading generic pack from $pack"
         if ! outfile=$(get -o /data/packs --output-filename --skip-up-to-date "$pack"); then
@@ -286,7 +329,9 @@ function handleModrinthProjects() {
 }
 
 function handleCurseForgeFiles() {
-  args=()
+  args=(
+    --use-http2="$CF_USE_HTTP2"
+  )
   if usesMods && ! usesPlugins; then
     args+=(--default-category mc-mods)
   elif usesPlugins && ! usesMods; then
@@ -296,6 +341,9 @@ function handleCurseForgeFiles() {
   case "${TYPE,,}" in
     forge|neoforge|fabric|quilt)
       args+=(--mod-loader "$TYPE")
+      ;;
+    cleanroom)
+      args+=(--mod-loader forge)
       ;;
     *)
       if isFamily HYBRID; then
@@ -359,6 +407,15 @@ case "X$MODCONFIG" in
     log "Invalid URL given for modconfig: Must be HTTP or HTTPS and a ZIP file"
     ;;
 esac
+fi
+
+if isTrue "${APPLY_CLEANROOM}"; then
+  if [[ "$VERSION" != "1.12.2" ]]; then
+    logError "Cleanroom only works with Minecraft version 1.12.2. Current version is $VERSION."
+    exit 1
+  fi
+  # run within the current shell to retain exported environment variables
+  . "$(dirname "$0")/start-applyCleanroom"
 fi
 
 exec "$(dirname "$0")/start-setupMounts" "$@"

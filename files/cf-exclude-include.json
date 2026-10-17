@@ -82,6 +82,7 @@
     "iceberg",
     "ignitioncoil",
     "illager-raid-music",
+    "immersive-damage-indicators",
     "inmisaddon",
     "iris-flywheel-compat",
     "irisshaders",
@@ -176,6 +177,7 @@
     "yungs-menu-tweaks",
     "zume"
   ],
+  "globalForceIncludes": ["simply-tooltips"],
   "modpacks": {
     "all-of-fabric-6": {
       "forceIncludes": ["revelationary"]
@@ -183,8 +185,14 @@
     "beyond-depth": {
       "forceIncludes": ["particular-reforged"]
     },
+    "craftoria": {
+      "forceIncludes": ["tmrv"]
+    },
     "create-arcane-engineering": {
       "forceIncludes": ["just-enough-resources-jer"]
+    },
+    "fantasy-minecraft-fabric": {
+      "forceIncludes": ["icon-leading-tooltip"]
     },
     "ftb-stoneblock-4": {
       "forceIncludes": [
@@ -196,6 +204,12 @@
       "forceIncludes": [
         "particular-reforged",
         "mob-player-animator"
+      ]
+    },
+    "nuclear-tech-integrated": {
+      "overridesExclusions": [
+        "mods/custommainmenu-*.jar",
+        "mods/defaultworldgenerator-*.jar"
       ]
     },
     "reclamation-reclaim-the-world": {
