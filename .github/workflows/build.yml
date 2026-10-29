@@ -18,6 +18,7 @@ on:
       - "zensical.toml"
       - ".readthedocs.yaml"
       - "renovate.json5"
+  workflow_dispatch:
 
 jobs:
   build:
@@ -29,10 +30,13 @@ jobs:
           - java25
           - java25-alpine
           - java25-jdk
+          - java25-graalvm
           - java21
           - java21-alpine
+          - java21-graalvm
           - java21-jdk
           - java17
+          - java17-graalvm
           - java16
           - java11
           - java8
@@ -40,8 +44,10 @@ jobs:
         include:
         # JAVA 25
           - variant: java25
-            baseImage: eclipse-temurin:25-jre
-            platforms: linux/amd64,linux/arm64
+            # NOTE: 25-jre is also Noble (currently), but this variant needs to be 25-jre-noble specifically to include riscv64
+            # Keep this aligned in verify-pr.yml also
+            baseImage: eclipse-temurin:25-jre-noble
+            platforms: linux/amd64,linux/arm64,linux/riscv64
             mcVersion: latest
           - variant: java25-alpine
             baseImage: eclipse-temurin:25-jre-alpine
@@ -49,6 +55,10 @@ jobs:
             mcVersion: latest
           - variant: java25-jdk
             baseImage: eclipse-temurin:25
+            platforms: linux/amd64,linux/arm64
+            mcVersion: latest
+          - variant: java25-graalvm
+            baseImage: container-registry.oracle.com/graalvm/jdk:25-ol10
             platforms: linux/amd64,linux/arm64
             mcVersion: latest
         # JAVA 21:
@@ -64,55 +74,69 @@ jobs:
             baseImage: eclipse-temurin:21-jre-alpine
             platforms: linux/amd64,linux/arm64
             mcVersion: 1.21.11
+          - variant: java21-graalvm
+            baseImage: container-registry.oracle.com/graalvm/jdk:21-ol10
+            platforms: linux/amd64,linux/arm64
+            mcVersion: 1.21.11
         # JAVA 17:
           - variant: java17
             # jammy doesn't work until minecraft updates to https://github.com/netty/netty/issues/12343
             baseImage: eclipse-temurin:17-jre-focal
             platforms: linux/amd64,linux/arm/v7,linux/arm64
             mcVersion: 1.20.4
+          - variant: java17-graalvm
+            baseImage: container-registry.oracle.com/graalvm/jdk:17-ol10
+            platforms: linux/amd64,linux/arm64
+            mcVersion: 1.20.4
         # JAVA 16
           - variant: java16
             baseImage: adoptopenjdk:16-jre-hotspot
             platforms: linux/amd64,linux/arm/v7,linux/arm64
             mcVersion: 1.16.5
+            # Pin version for pre-Java 17
+            mcHelperVersion: 1.51.6-java8
         # JAVA 11
           - variant: java11
             baseImage: adoptopenjdk:11-jre-hotspot
             platforms: linux/amd64,linux/arm/v7,linux/arm64
             mcVersion: 1.16.4
+            # Pin version for pre-Java 17
+            mcHelperVersion: 1.51.6-java8
         # JAVA 8: NOTE: Unable to go past 8u312 because of Forge dependencies
           - variant: java8
-            baseImage: eclipse-temurin:8u312-b07-jre-focal
+            baseImage: eclipse-temurin:8-jre
             platforms: linux/amd64,linux/arm/v7,linux/arm64
             mcVersion: 1.12.2
-            # Pin version for Java 8
-            mcHelperVersion: 1.51.1
+            mcHelperVersion: 1.51.6-java8
           - variant: java8-jdk
-            baseImage: eclipse-temurin:8u312-b07-jdk-focal
+            baseImage: eclipse-temurin:8-jdk
             platforms: linux/amd64,linux/arm64
             mcVersion: 1.12.2
-            # Pin version for Java 8
-            mcHelperVersion: 1.51.1
+            mcHelperVersion: 1.51.6-java8
     env:
+      # Assume they line up, but when forked change to your Docker Hub username
+      DOCKER_HUB_ORG: ${{ github.repository_owner }}
       IMAGE_TO_TEST: "${{ github.repository_owner }}/minecraft-server:test-${{ matrix.variant }}-${{ github.run_id }}"
+      # NOTE: env values are always strings, so the boolean-valued ones below have to be
+      # compared with == 'true'. Used bare, the string "false" evaluates as true.
       HAS_IMAGE_REPO_ACCESS: ${{ secrets.DOCKER_USER != '' && secrets.DOCKER_PASSWORD != '' }}
       MAIN_VARIANT: java25
+      PUSH: ${{ github.repository_owner == 'itzg' }}
+      IMAGE_AUTHOR: "Geoff Bourne <itzgeoff@gmail.com>"
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7
         with:
           # for build-files step
           fetch-depth: 0
 
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v6.0.0
+        uses: docker/metadata-action@v6.2.0
         with:
-          # NOTE for forks: if your Docker Hub organization doesn't match your Github repo's,
-          # then the use of ${{ github.repository_owner }} will need to be replaced.
           images: |
-            ${{ github.repository_owner }}/minecraft-server
+            ${{ env.DOCKER_HUB_ORG }}/minecraft-server
             ghcr.io/${{ github.repository_owner }}/minecraft-server
           tags: |
             # Apply the variant as a moving tag for most recent commit per variant
@@ -134,16 +158,16 @@ jobs:
           flavor: |
             latest=${{ matrix.variant == env.MAIN_VARIANT && github.ref_name == github.event.repository.default_branch }}
           labels: |
-            org.opencontainers.image.authors=Geoff Bourne <itzgeoff@gmail.com>
+            org.opencontainers.image.authors=${{ env.IMAGE_AUTHOR }}
 
       - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v4.0.0
+        uses: docker/setup-buildx-action@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4.0.0
+        uses: docker/setup-qemu-action@v4.4.0
 
       - name: Build for test
-        uses: docker/build-push-action@v7.1.0
+        uses: docker/build-push-action@v7
         with:
           platforms: linux/amd64
           tags: ${{ env.IMAGE_TO_TEST }}
@@ -155,6 +179,7 @@ jobs:
           build-args: |
             BASE_IMAGE=${{ matrix.baseImage }}
             ${{ matrix.mcHelperVersion && format('MC_HELPER_VERSION={0}', matrix.mcHelperVersion) }}
+            ${{ matrix.knockdRepoOrg && format('KNOCKD_REPO_ORG={0}', matrix.knockdRepoOrg) }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           # no cache-to to avoid cross-cache update from next build step
 
@@ -168,34 +193,37 @@ jobs:
           tests/test.sh
 
       - name: Login to DockerHub
-        uses: docker/login-action@v4.1.0
-        if: env.HAS_IMAGE_REPO_ACCESS
+        uses: docker/login-action@v4.7.0
+        if: env.HAS_IMAGE_REPO_ACCESS == 'true'
         with:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Login to GHCR
-        uses: docker/login-action@v4.1.0
-        if: env.HAS_IMAGE_REPO_ACCESS
+        uses: docker/login-action@v4.7.0
+        if: env.HAS_IMAGE_REPO_ACCESS == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
       - name: Build and push
-        uses: docker/build-push-action@v7.1.0
+        uses: docker/build-push-action@v7
         if: github.actor == github.repository_owner
         with:
           platforms: ${{ matrix.platforms }}
           push: >
             ${{ 
-            github.ref_type == 'tag' 
-            || github.ref_name == github.event.repository.default_branch
-            || startsWith(github.ref_name, 'test/')
-            || ( github.event_name == 'pull_request' 
-                 && env.HAS_IMAGE_REPO_ACCESS 
-                 && contains(github.event.pull_request.labels.*.name, 'ci/push-image') 
-               )
+            env.PUSH == 'true' &&
+            (
+              github.ref_type == 'tag' 
+              || github.ref_name == github.event.repository.default_branch
+              || startsWith(github.ref_name, 'test/')
+              || ( github.event_name == 'pull_request' 
+                   && env.HAS_IMAGE_REPO_ACCESS == 'true'
+                   && contains(github.event.pull_request.labels.*.name, 'ci/push-image') 
+                 )
+            )
             }}
           tags: ${{ steps.meta.outputs.tags }}
           # ensure latest base image is used
@@ -211,5 +239,7 @@ jobs:
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
             REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
             ${{ matrix.mcHelperVersion && format('MC_HELPER_VERSION={0}', matrix.mcHelperVersion) }}
+            ${{ matrix.knockdRepoOrg && format('KNOCKD_REPO_ORG={0}', matrix.knockdRepoOrg) }}
+            IMAGE_AUTHOR=${{ env.IMAGE_AUTHOR }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}

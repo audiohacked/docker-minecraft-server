@@ -26,6 +26,117 @@ function applyResultsFile() {
   set +a
 }
 
+function loadEnvFromFile() {
+  local source=${1?Missing required source argument}
+  local downloaded=
+
+  if isURL "$source"; then
+    mkdir -p /data/.tmp
+    downloaded=$(mktemp -p /data/.tmp)
+    log "Downloading env file from $source"
+    if ! get -o "$downloaded" "$source"; then
+      logError "Failed to download env file from $source"
+      rm -f "$downloaded"
+      return 1
+    fi
+    log "Loading env vars from $source"
+    applyResultsFile "$downloaded"
+    rm -f "$downloaded"
+  elif [ -f "$source" ]; then
+    log "Loading env vars from $source"
+    applyResultsFile "$source"
+  else
+    logError "Env file not found: $source"
+    return 1
+  fi
+}
+
+function loadEnvFromArchive() {
+  local source=${1?Missing required source argument}
+  local entry=${2:-.env}
+  local archive=
+  local downloaded=
+  local tmpdir
+  local rc=0
+
+  mkdir -p /data/.tmp
+
+  if isURL "$source"; then
+    downloaded=$(mktemp -p /data/.tmp)
+    log "Downloading archive from $source"
+    if ! get -o "$downloaded" "$source"; then
+      logError "Failed to download archive from $source"
+      rm -f "$downloaded"
+      return 1
+    fi
+    archive=$downloaded
+  elif [ -f "$source" ]; then
+    archive=$source
+  else
+    logError "Archive not found: $source"
+    return 1
+  fi
+
+  tmpdir=$(mktemp -d -p /data/.tmp)
+  if extract "$archive" "$tmpdir" "$entry" && [ -f "$tmpdir/$entry" ]; then
+    log "Loading env vars from '$entry' in $source"
+    applyResultsFile "$tmpdir/$entry"
+  else
+    logError "Failed to load env entry '$entry' from $source"
+    rc=1
+  fi
+
+  rm -rf "$tmpdir"
+  [[ -n "$downloaded" ]] && rm -f "$downloaded"
+  return $rc
+}
+
+function loadEnvFromGenericPack() {
+  : "${GENERIC_PACKS:=${GENERIC_PACK:-}}"
+  : "${GENERIC_PACKS_PREFIX:=}"
+  : "${GENERIC_PACKS_SUFFIX:=}"
+
+  if [[ -z "${GENERIC_PACKS}" ]]; then
+    logWarning "LOAD_ENV_FROM_GENERIC_PACK is set but GENERIC_PACK(S) is empty"
+    return 0
+  fi
+
+  mkdir -p /data/.tmp
+  IFS=',' read -ra packs <<< "${GENERIC_PACKS}"
+  local loaded=0
+  local pack packEntry packFile tmpdir
+  for packEntry in "${packs[@]}"; do
+    pack="${GENERIC_PACKS_PREFIX}${packEntry}${GENERIC_PACKS_SUFFIX}"
+    if isURL "$pack"; then
+      mkdir -p /data/packs
+      if ! packFile=$(get -o /data/packs --output-filename --skip-up-to-date "$pack"); then
+        logError "Failed to download generic pack $pack"
+        return 1
+      fi
+    else
+      packFile=$pack
+    fi
+
+    if [[ ! -f "$packFile" ]]; then
+      logError "Generic pack not found: $packFile"
+      return 1
+    fi
+
+    tmpdir=$(mktemp -d -p /data/.tmp)
+    # Packs without a .env are valid — silently skip; the unpack step still applies them.
+    if extract "$packFile" "$tmpdir" .env 2>/dev/null && [ -f "$tmpdir/.env" ]; then
+      log "Loading env vars from .env in $pack"
+      applyResultsFile "$tmpdir/.env"
+      loaded=$((loaded + 1))
+    fi
+    rm -rf "$tmpdir"
+  done
+
+  if (( loaded == 0 )); then
+    logWarning "LOAD_ENV_FROM_GENERIC_PACK is set but no pack in GENERIC_PACK(S) contained a .env"
+  fi
+}
+
 function join_by() {
   local d=$1
   shift
@@ -60,6 +171,12 @@ function isURL() {
   local value=$1
 
   [[ $value =~ ^(https?|ftp):// ]]
+}
+
+function isOCIRef() {
+  local value=$1
+
+  [[ $value =~ ^oci:// ]]
 }
 
 function isValidFileURL() {
@@ -251,9 +368,22 @@ function logRcon() {
 }
 
 function normalizeMemSize() {
+  # Convert a JVM-style size (k/m/g) or a percentage of the container memory
+  # limit into bytes. Bash arithmetic is integer-only, so percentages cannot
+  # use a 0.01 scale factor.
+  local input=${1?}
+  local val=${input:0:-1}
   local scale=1
-  local mem=1
-  case ${1,,} in
+  local mem
+
+  val=${val// /}
+  val=${val%%.*}
+  if ! [[ $val =~ ^[0-9]+$ ]]; then
+    logError "Unable to parse memory size '$input'"
+    return 1
+  fi
+
+  case ${input,,} in
   *k)
     scale=1024
     ;;
@@ -264,19 +394,25 @@ function normalizeMemSize() {
     scale=1073741824
     ;;
   *%)
-    # Get system memory
-    if [ -f "/sys/fs/cgroup/memory/memory.limit_in_bytes" ]; then
-    mem=$( cat /sys/fs/cgroup/memory/memory.limit_in_bytes )
-    elif [ -f "/sys/fs/cgroup/memory.max" ]; then
-    mem=$( cat /sys/fs/cgroup/memory.max )
+    if [ -f /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
+      mem=$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes)
+    elif [ -f /sys/fs/cgroup/memory.max ]; then
+      mem=$(cat /sys/fs/cgroup/memory.max)
     fi
-    # Scale is used to transform percentages into decimals (eg. 60 -> 0.6)
-    scale=0.01
+    # cgroup v2 unlimited is "max"; cgroup v1 uses a large sentinel (~2^63).
+    if [[ $mem == max || ! $mem =~ ^[0-9]+$ ]] || (( mem > 1 << 62 )); then
+      mem=$(awk '/MemTotal:/ { print $2 * 1024 }' /proc/meminfo)
+    fi
+    if ! [[ $mem =~ ^[0-9]+$ ]]; then
+      logError "Unable to determine memory limit for percentage value '$input'"
+      return 1
+    fi
+    echo $((val * mem / 100))
+    return 0
     ;;
   esac
 
-  val=${1:0:-1}
-  echo $((val * scale * mem))
+  echo $((val * scale))
 }
 
 function compare_version() {
@@ -411,6 +547,23 @@ function removeOldMods {
   fi
 }
 
+function removeOldConfigs {
+  if [ -d "$1" ]; then
+    log "Removing old configs including='${REMOVE_OLD_CONFIGS_INCLUDE}' excluding='${REMOVE_OLD_CONFIGS_EXCLUDE}' up to depth=${REMOVE_OLD_CONFIGS_DEPTH}"
+    args=(
+      --delete
+      --type file
+      --min-depth=1 --max-depth "${REMOVE_OLD_CONFIGS_DEPTH}"
+      --name "${REMOVE_OLD_CONFIGS_INCLUDE}"
+      --exclude-name "${REMOVE_OLD_CONFIGS_EXCLUDE}"
+    )
+    if ! isDebugging; then
+      args+=(--quiet)
+    fi
+    mc-image-helper find "${args[@]}" "$1"
+  fi
+}
+
 function get() {
   mc-image-helper get "$@"
 }
@@ -443,19 +596,54 @@ function isType() {
 }
 
 function extract() {
-  src=${1?}
-  destDir=${2?}
+  local src=${1?}
+  local destDir=${2?}
+  shift 2
+  # Remaining args are paths within the archive; if none, extract everything.
 
+  # Use modern `mc-image-helper extract archive` if it exists. Standardises extraction logic
+  # and checks if ZipSlips / Path Traversals exist before extraction
+  # Supports ZIP, TAR, TAR.GZ, TAR.BZ2, TAR.ZSTD 
+  if mc-image-helper has-feature archive; then
+    mc-image-helper archive extract --overwrite -- "${src}" "${destDir}" "$@"
+    return $?
+  fi
+
+  # Older helper builds, including Java 8, use the shell extraction fallback.
+  local type
   type=$(file -b --mime-type "${src}")
+  if [[ "$type" == application/octet-stream ]]; then
+      logWarning "Detected non-specific file type $type for $src"
+      case "$src" in
+        *.zip)
+          log "Assuming zip from extension"
+          type=application/zip
+          ;;
+        # otherwise fall through to
+      esac
+  fi
+
   case "${type}" in
   application/zip)
-    unzip -o -q -d "${destDir}" "${src}"
+    if unzip -Z1 "${src}" | grep -qE '(^/)|(^\.\./)|(/\.\./)|(/\.\.$)'; then
+      logError "Refusing to extract $src because it contains path traversal entries"
+      return 1
+    fi
+    unzip -o -q -d "${destDir}" "${src}" "$@"
     ;;
   application/x-tar | application/gzip | application/x-gzip | application/x-bzip2)
-    tar -C "${destDir}" -xf "${src}"
+    if tar -tf "${src}" | grep -qE '(^/)|(^\.\./)|(/\.\./)|(/\.\.$)'; then
+      logError "Refusing to extract $src because it contains path traversal entries"
+      return 1
+    fi
+    tar -C "${destDir}" -xf "${src}" "$@"
     ;;
   application/zstd | application/x-zstd)
-    tar -C "${destDir}" --use-compress-program=unzstd -xf "${src}"
+    if tar --use-compress-program=unzstd -tf "${src}" | grep -qE '(^/)|(^\.\./)|(/\.\./)|(/\.\.$)'; then
+      logError "Refusing to extract $src because it contains path traversal entries"
+      return 1
+    fi
+    tar -C "${destDir}" --use-compress-program=unzstd -xf "${src}" "$@"
     ;;
   *)
     logError "Unsupported archive type: $type"
@@ -466,6 +654,23 @@ function extract() {
 
 function getDistro() {
   grep -E "^ID=" /etc/os-release | cut -d= -f2 | sed -e 's/"//g'
+}
+
+function getJavaRelease() {
+  # Read the major version from the JDK's release file so no JVM has to start;
+  # the helper is the fallback when the file is missing.
+  local version
+  if [[ ${JAVA_HOME:-} && -f "$JAVA_HOME/release" ]]; then
+    version=$(sed -n -e 's/^JAVA_VERSION="\(.*\)"$/\1/p' "$JAVA_HOME/release")
+    # Java 8 and earlier report 1.8.0_312 and so on
+    version=${version#1.}
+    version=${version%%[._-]*}
+  fi
+  if isNumeric "${version:-}"; then
+    echo "$version"
+  else
+    mc-image-helper java-release
+  fi
 }
 
 function checkSum() {

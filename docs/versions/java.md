@@ -10,24 +10,29 @@ or explicitly include the tag, such as
 
 where `<tag>` refers to the first column of this table:
 
-| Tag            | Java version | Linux  | JVM Type           | Architecture        | Note |
-|----------------|--------------|--------|--------------------|---------------------|------|
-| latest         | 25           | Ubuntu | Hotspot            | amd64, arm64        |      |
-| stable         | 25           | Ubuntu | Hotspot            | amd64, arm64        |      |
-| java25         | 25           | Ubuntu | Hotspot            | amd64, arm64        |      |
-| java25-alpine  | 25           | Alpine | Hotspot            | amd64, arm64        |      |
-| java25-jdk     | 25           | Ubuntu | Hotspot+JDK        | amd64, arm64        |      |
-| java21         | 21           | Ubuntu | Hotspot            | amd64, arm64        |      |
-| java21-jdk     | 21           | Ubuntu | Hotspot+JDK        | amd64, arm64        |      |
-| java21-alpine  | 21           | Alpine | Hotspot            | amd64, arm64        |      |
-| java17         | 17           | Ubuntu | Hotspot            | amd64, arm64, armv7 |      |
-| java16         | 16           | Ubuntu | Hotspot            | amd64, arm64, armv7 | (1)  |
-| java11         | 11           | Ubuntu | Hotspot            | amd64, arm64, armv7 |      |
-| java8          | 8            | Ubuntu | Hotspot            | amd64, arm64, armv7 |      |
+| Tag           | Java version | Linux  | JVM Type    | Architecture          | Note |
+|---------------|--------------|--------|-------------|-----------------------|------|
+| latest        | 25           | Ubuntu | Hotspot     | amd64, arm64, riscv64 |      |
+| stable        | 25           | Ubuntu | Hotspot     | amd64, arm64, riscv64 |      |
+| java25        | 25           | Ubuntu | Hotspot     | amd64, arm64, riscv64 |      |
+| java25-alpine | 25           | Alpine | Hotspot     | amd64, arm64          |      |
+| java25-jdk    | 25           | Ubuntu | Hotspot+JDK | amd64, arm64          |      |
+| java25-graalvm | 25          | Oracle | Oracle GraalVM | amd64, arm64       | (2)(3) |
+| java21        | 21           | Ubuntu | Hotspot     | amd64, arm64          |      |
+| java21-jdk    | 21           | Ubuntu | Hotspot+JDK | amd64, arm64          |      |
+| java21-alpine | 21           | Alpine | Hotspot     | amd64, arm64          |      |
+| java21-graalvm | 21          | Oracle | Oracle GraalVM | amd64, arm64       | (2)(3) |
+| java17        | 17           | Ubuntu | Hotspot     | amd64, arm64, armv7   |      |
+| java17-graalvm | 17          | Oracle | Oracle GraalVM | amd64, arm64       | (2)(3) |
+| java16        | 16           | Ubuntu | Hotspot     | amd64, arm64, armv7   | (1)  |
+| java11        | 11           | Ubuntu | Hotspot     | amd64, arm64, armv7   |      |
+| java8         | 8            | Ubuntu | Hotspot     | amd64, arm64, armv7   |      |
 
 Notes
 
 1. This version of Java is [recommended for PaperMC 1.16.5](https://docs.papermc.io/paper/getting-started/#requirements)
+2. Based on the [Oracle GraalVM images](https://blogs.oracle.com/java/post/new-oracle-graalvm-container-images), which as of JDK 17, are now under the [GraalVM Free License](https://blogs.oracle.com/java/post/graalvm-free-license) incorporating what used to be known as the GraalVM Enterprise.
+3. Due to these images using Oracle Linux, (which is based on Red Hat Enterprise Linux) Forge Installer will not work due to its use of zlib-ng. Use other images for initial installation and Forge version upgrade.
 
 !!! example "Example using java8"
 
@@ -106,7 +111,11 @@ Caused by: org.spongepowered.asm.mixin.throwables.ClassMetadataNotFoundException
 
 #### Java 8
 
-For Forge versions less than 1.18, you _must_ use the `java8-multiarch` (or other java8) image tag.
+For Forge versions less than 1.18, you _must_ use the `java8` (or other java8) image tag.
+
+!!! warning "Java 8 is in maintenance mode"
+
+    The `java8` / `java8-jdk` tags, and other pre-Java 17 tags (`java11`, `java16`), pin an older `mc-image-helper` that predates the baked-in CurseForge API key. `AUTO_CURSEFORGE` and `CURSEFORGE_FILES` on those images require you to set `CF_API_KEY` yourself. Java 17+ images include a key and do not need this.
 
 In general, if you see the following line in a server startup failure, then it means you need to be using Java 8 instead of the latest image Java version:
 
@@ -121,7 +130,6 @@ Forge also doesn't support openj9 JVM implementation.
 
 The following image tags have been deprecated and are no longer receiving updates:
 
-- java25-graalvm, java21-graalvm, java17-graalvm
 - adopt13
 - adopt14
 - adopt15

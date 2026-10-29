@@ -48,14 +48,14 @@
     "fancymenu",
     "fast-ip-ping",
     "fastquit",
-    "FauxCustomEntityData",
     "feytweaks",
-    "figura",
+    "/(^|/)figura-/",
     "ForgeConfigScreens",
     "GeckoLibIrisCompat",
     "gpumemleakfix",
     "Highlighter",
     "ImmediatelyFast",
+    "immersivedamageindicators",
     "indium",
     "inventory-profiles-next",
     "iris",
@@ -105,7 +105,7 @@
     "Zoomify",
     "zume"
   ],
-  "globalForceIncludes": [],
+  "globalForceIncludes": ["/(^|/)simplytooltips-/", "/(^|/)s-lib-/"],
   "modpacks": {
     "cobbleverse": {
       "excludes": [

@@ -7,6 +7,7 @@ IFS=$'\n\t'
 
 : "${EULA:=}"
 : "${PROXY:=}"
+: "${PREFER_IPV6:=false}"
 : "${ENABLE_AUTOPAUSE:=false}"
 : "${ENABLE_AUTOSTOP:=false}"
 : "${RCON_CMDS_STARTUP:=}"
@@ -28,9 +29,15 @@ shopt -s nullglob
 
 isDebugging && set -x
 
-if (( $(mc-image-helper java-release) >= 17 )); then
-  MC_IMAGE_HELPER_OPTS+=" --enable-native-access=ALL-UNNAMED"
+if isTrue "$PREFER_IPV6"; then
+  MC_IMAGE_HELPER_OPTS+="-Djava.net.preferIPv6Addresses=true -Djava.net.preferIPv6Stack=true"
   export MC_IMAGE_HELPER_OPTS
+  JVM_DD_OPTS+="java.net.preferIPv6Addresses=true java.net.preferIPv6Stack=true"
+  export JVM_DD_OPTS
+fi
+
+if [[ $(getDistro) == alpine ]]; then
+  export LD_PRELOAD=/lib/libgcompat.so.0
 fi
 
 export HOME=/data
@@ -123,7 +130,8 @@ function addToProxyArgs() {
 addToProxyArgs http.proxyHost "${PROXY_HOST:-}"
 addToProxyArgs http.proxyPort "${PROXY_PORT:-}"
 addToProxyArgs http.nonProxyHosts "${PROXY_NON_PROXY_HOSTS:-}"
-export MC_IMAGE_HELPER_OPTS+=" ${proxyArgs[*]}"
+LOCAL_IFS=$IFS; IFS=' '; MC_IMAGE_HELPER_OPTS+=" ${proxyArgs[*]}"; IFS=$LOCAL_IFS
+export MC_IMAGE_HELPER_OPTS
 
 function fixJavaPath() {
   # Some Docker management UIs grab all the image declared variables and present them for configuration.
@@ -152,6 +160,31 @@ fi
 
 cd /data || exit 1
 
+##########################################
+# Optionally load environment variables from a file or archive entry,
+# allowing packs/artifacts to declare TYPE, VERSION and other settings
+# inside-out. Loaded values override anything passed in through docker -e.
+# Generic packs are processed first so that LOAD_ENV_FROM_FILE and
+# LOAD_ENV_FROM_ARCHIVE can override any values they set.
+
+if isTrue "${LOAD_ENV_FROM_GENERIC_PACK:-false}"; then
+  if ! loadEnvFromGenericPack; then
+    exit 1
+  fi
+fi
+
+if [[ ${LOAD_ENV_FROM_FILE:-} ]]; then
+  if ! loadEnvFromFile "${LOAD_ENV_FROM_FILE}"; then
+    exit 1
+  fi
+fi
+
+if [[ ${LOAD_ENV_FROM_ARCHIVE:-} ]]; then
+  if ! loadEnvFromArchive "${LOAD_ENV_FROM_ARCHIVE}" "${LOAD_ENV_FROM_ARCHIVE_ENTRY:-.env}"; then
+    exit 1
+  fi
+fi
+
 export DECLARED_TYPE=${TYPE^^}
 export DECLARED_VERSION="$VERSION"
 
@@ -169,6 +202,17 @@ if isTrue "${VERSION_FROM_MODRINTH_PROJECTS:-}" && [[ ${MODRINTH_PROJECTS:-} ]];
 fi
 
 if isTrue "${ENABLE_AUTOPAUSE}"; then
+  if [[ -n "${MAX_TICK_TIME:-}" && "$MAX_TICK_TIME" != "-1" ]] ; then
+    logWarning "MAX_TICK_TIME is non-default, for autopause to work properly, this check should be disabled (-1 for versions >= 1.8.1)"
+  elif [[ -z "${MAX_TICK_TIME:-}" ]] ; then
+    MAX_TICK_TIME=-1
+    if versionLessThan 1.8.1; then
+      # 10 years
+      MAX_TICK_TIME=315360000000
+    fi
+    export MAX_TICK_TIME
+  fi
+  # Keep the default in this process so it reaches server.properties setup.
   "$(dirname "$0")/start-autopause"
 elif isTrue "${ENABLE_AUTOSTOP}"; then
   "$(dirname "$0")/start-autostop"
@@ -245,6 +289,10 @@ case "${TYPE^^}" in
     exec "$(dirname "$0")/start-deployForge" "$@"
   ;;
 
+  CLEANROOM)
+    exec "$(dirname "$0")/start-deployCleanroom" "$@"
+  ;;
+
   NEOFORGE|NEOFORGED)
     exec "$(dirname "$0")/start-deployNeoForge" "$@"
   ;;
@@ -305,6 +353,10 @@ case "${TYPE^^}" in
     exec "$(dirname "$0")/start-deployNanoLimbo" "$@"
   ;;
 
+  PUMPKIN)
+    exec "$(dirname "$0")/start-deployPumpkin" "$@"
+  ;;
+
   CRUCIBLE)
     exec "$(dirname "$0")/start-deployCrucible" "$@"
   ;;
@@ -325,7 +377,8 @@ case "${TYPE^^}" in
       logError "Invalid TYPE: '$TYPE'"
       logError "Must be: VANILLA, FORGE, BUKKIT, SPIGOT, PAPER, FOLIA, PURPUR, FABRIC, QUILT,"
       logError "         SPONGEVANILLA, CUSTOM, MAGMA, MOHIST, GTNH, AIRPLANE, PUFFERFISH,"
-      logError "         CANYON, LIMBO, NANOLIMBO, CRUCIBLE, LEAF, YOUER, BANNER, NEOFORGE"
+      logError "         CANYON, LIMBO, NANOLIMBO, PUMPKIN, CRUCIBLE, LEAF, YOUER, BANNER, NEOFORGE,"
+      logError "         CLEANROOM"
       exit 1
   ;;
 
