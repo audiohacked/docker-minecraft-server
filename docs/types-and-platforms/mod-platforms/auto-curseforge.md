@@ -4,9 +4,11 @@ To manage a CurseForge modpack automatically with upgrade support, pinned or lat
 
 ## API Key
 
-!!! warning "CurseForge API key usage"
+!!! info "CurseForge API key usage"
 
-    A CurseForge API key is **required** to use this feature. Go to their [developer console](https://console.curseforge.com/), generate an API key, and set the environment variable `CF_API_KEY`.
+    A CurseForge API key is _now_ included by this image on Java 17 and newer; however, you can always supply your own instead. Go to their [developer console](https://console.curseforge.com/), generate an API key, and set the environment variable `CF_API_KEY`.
+
+    The `java8` image (and other pre-Java 17 tags) does **not** include that key. Set `CF_API_KEY` yourself, or install the pack on a Java 17+ image first. See [Java 8](../../versions/java.md#java-8).
 
     When entering your API Key in a docker compose file you will need to escape any `$` character with a second `$`. Refer to [this compose file reference section](https://docs.docker.com/compose/compose-file/compose-file-v3/#variable-substitution) for more information.
 
@@ -79,13 +81,11 @@ Pass a page URL to the modpack or a specific file with `CF_PAGE_URL` such as the
     environment:
       # ...
       MODPACK_PLATFORM: AUTO_CURSEFORGE
-      # allocate from https://console.curseforge.com/ and set in .env file
-      CF_API_KEY: ${CF_API_KEY}
       CF_PAGE_URL: https://www.curseforge.com/minecraft/modpacks/all-the-mods-8
     ```
 
     ```title="Using docker run"
-    docker run -e CF_API_KEY=${CF_API_KEY} -e TYPE=AUTO_CURSEFORGE -e CF_PAGE_URL=https://www.curseforge.com/minecraft/modpacks/all-the-mods-8
+    docker run -e TYPE=AUTO_CURSEFORGE -e CF_PAGE_URL=https://www.curseforge.com/minecraft/modpacks/all-the-mods-8
     ```
 
 Instead of a URL, the modpack slug can be provided as `CF_SLUG`. The slug is the short identifier visible in the URL after "/modpacks/", such as
@@ -98,13 +98,11 @@ Instead of a URL, the modpack slug can be provided as `CF_SLUG`. The slug is the
     environment:
       # ...
       MODPACK_PLATFORM: AUTO_CURSEFORGE
-      # allocate from https://console.curseforge.com/ and set in .env file
-      CF_API_KEY: ${CF_API_KEY}
       CF_SLUG: all-the-mods-8
     ```
 
     ```title="Using docker run"
-    docker run -e CF_API_KEY=${CF_API_KEY} -e TYPE=AUTO_CURSEFORGE -e CF_SLUG=all-the-mods-8
+    docker run -e TYPE=AUTO_CURSEFORGE -e CF_SLUG=all-the-mods-8
     ```
 
 ### Pinning modpack and mod loader versions
@@ -113,7 +111,7 @@ The latest modpack file and its associated mod loader will be located and instal
 
 - Use `CF_PAGE_URL`, but include the full URL to a specific file
 - Set `CF_FILE_ID` to the numerical file ID
-- Specify a substring to match the desired filename with `CF_FILENAME_MATCHER`
+- Specify either a substring or a regex pattern surrounded with "/" to match the desired filename with `CF_FILENAME_MATCHER`
 
 The following shows where to get the URL to the specific file and also shows where the file ID is located:
 
@@ -135,6 +133,21 @@ The following examples all refer to version 1.0.7 of ATM8:
   CF_FILENAME_MATCHER: 1.0.7
 ```
 
+To use a regular expression instead, surround the pattern with `/` characters:
+
+```yaml
+  # Matches filenames containing a 1.0.7 version
+  CF_SLUG: all-the-mods-8
+  CF_FILENAME_MATCHER: '/1\.0\.7/'
+```
+
+Regular expressions can use `^` to anchor a match to the beginning of the filename and `$` to anchor it to the end. The following matches an ATM8 filename that starts with `all-the-mods-8` and ends with `1.0.7.zip`:
+
+```yaml
+  CF_SLUG: all-the-mods-8
+  CF_FILENAME_MATCHER: '/^All the Mods 8-1\.0\.7\.zip$/'
+```
+
 Pinning modpack version also pins the mod loader (to the version specified by the modpack). Mod loader version cannot be pinned independently of the modpack.
 
 ### Custom modloader versions
@@ -148,7 +161,6 @@ By default, AUTO_CURSEFORGE will use the exact modloader version declared by the
     ```yaml
     environment:
       MODPACK_PLATFORM: AUTO_CURSEFORGE
-      CF_API_KEY: ${CF_API_KEY}
       CF_SLUG: all-the-mods-8
       CF_MOD_LOADER_VERSION: "43.4.22"
     ```
@@ -197,8 +209,6 @@ If you wish to use an unpublished modpack zip, set the container path to the fil
         environment:
           EULA: true
           MODPACK_PLATFORM: AUTO_CURSEFORGE
-          # allocate from https://console.curseforge.com/ and set in .env file
-          CF_API_KEY: ${CF_API_KEY}
           CF_MODPACK_MANIFEST: /manifests/manifest.json
           CF_SLUG: "custom"
         volumes:
@@ -273,6 +283,8 @@ If needing to iterate on the options above, set `CF_FORCE_SYNCHRONIZE` to "true"
 ## Excluding Overrides Files
 
 Modpack zip files typically include an `overrides` subdirectory that may contain config files, world data, and extra mod files. All of those files will be extracted into the `/data` path of the container. If any of those files, such as incompatible mods, need to be excluded from extraction, then the `CF_OVERRIDES_EXCLUSIONS` variable can be set with a comma or newline delimited list of ant-style paths ([see below](#ant-style-paths)) to exclude, relative to the overrides (or `/data`) directory.
+
+The exclude/include file can also declare `overridesExclusions` for a specific modpack. These ant-style paths are combined with `CF_OVERRIDES_EXCLUSIONS`. Project exclusions such as `CF_EXCLUDE_MODS` do not filter files bundled in overrides. Set `CF_FORCE_SYNCHRONIZE=true` to reapply changed exclusions to an existing installation.
 
 ### Ant-style paths
 

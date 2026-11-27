@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# run within the current shell to retain exported environment variables
+. "$(dirname "$0")/start-applyCleanroom"
+
+exec "$(dirname "$0")/start-setupWorld" "$@"

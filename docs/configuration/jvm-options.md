@@ -89,6 +89,33 @@ you can use
   JVM_DD_OPTS: fml.queryResult=confirm,name=value
 ```
 
+## Java and JVM Agents
+
+Java agents, such as [authlib-injector](https://github.com/yushijinhun/authlib-injector), can be loaded into the server by setting `JAVA_AGENTS`, and native JVM agents by setting `JVM_AGENTS`. Like [the `MODS` / `PLUGINS` variables](../mods-and-plugins/index.md#modsplugins-list), both are a comma or newline delimited list of
+
+- URL of an agent file
+- container path to an agent file
+- container path to a directory containing agent jar files for `JAVA_AGENTS`, or `.so` files for `JVM_AGENTS`
+
+The agents are copied into `/data/agents/java` and `/data/agents/jvm`, and each one is passed to the JVM as `-javaagent:<file>` or `-agentpath:<file>`, in file name order.
+
+!!! example
+
+    ```yaml
+        environment:
+          JAVA_AGENTS: |
+            https://www.example.com/agents/agent.jar
+            /agents
+    ```
+
+!!! note "Auto-removal"
+
+    Entries that are removed from the `JAVA_AGENTS` or `JVM_AGENTS` list will be automatically removed from the agents directory, so they are no longer loaded.
+
+!!! note "Agent options"
+
+    An agent that needs options, such as `-javaagent:agent.jar=options`, can still be passed with `JVM_OPTS` instead.
+
 ## Enable Remote JMX for Profiling
 
 To enable remote JMX, such as for profiling with VisualVM or JMC, set the environment variable `ENABLE_JMX` to "true", set `JMX_HOST` to the IP/host running the Docker container, and add a port forwarding of TCP port 7091, such as:
@@ -131,3 +158,9 @@ When `MEMORY` is greater than or equal to 12G, then the Aikar flags will be adju
 [MeowIce has created an updated set of JVM flags](https://github.com/MeowIce/meowice-flags?tab=readme-ov-file#why-would-i-have-to-switch-) based on Aikar's flags but with support for optimizations for Java 17 and above
 
 The set of flags documented there can be added by setting the environment variable `USE_MEOWICE_FLAGS` to `true`. There is an optional `USE_MEOWICE_GRAALVM_FLAGS` variable to enable GraalVM specific optimizations, defaults to `FALSE`.
+
+MeowIce's flags use the G1 garbage collector by default. MeowIce also provides a [ZGC version of the flags](https://github.com/MeowIce/meowice-flags#zgc-version-for-large-servers-with-32gb-allocated-heap), which is recommended for servers with 32GB or more of allocated memory and many CPU cores. To use it instead, also set `USE_MEOWICE_ZGC_FLAGS` to `true`. When `MAX_MEMORY` (or `MEMORY`) is larger than 2GB, the soft max heap size is set to 2GB below it, as in MeowIce's flags.
+
+## Mitigating Java4Shell exploit (CVE-2026-114938)
+
+The latest image now includes a base image that includes the upstream fix [listed here](https://adoptium.net/news/2026/11/temurin-november-2026-cspu-java4shell).

@@ -29,3 +29,15 @@ A tool that is bundled with this image to provide complex, re-usable preparation
 ### [itzg/rcon](https://github.com/itzg/docker-rcon-web-admin)
 
 An image that dockerizes [rcon-web-admin](https://github.com/rcon-web-admin/rcon-web-admin).
+
+### [AutoStopper](https://github.com/Criseda/AutoStopper)
+
+A Velocity plugin that stops idle backend servers and wakes them when players connect, with readiness-aware Docker lifecycle management.
+
+### [Kobblestone](https://github.com/kobblestoneio/kobblestone)
+
+A Kubernetes operator for Minecraft that supports custom resource types to manage servers, routers, backups and more.
+
+### [Minecraft Server Manager (MSM)](https://github.com/anefzaoui/minecraft-server-manager)
+
+A self-hosted web panel that creates and manages `itzg/minecraft-server` containers, one per server, with modpacks pinned through the image's Modrinth/CurseForge/FTB support, backups, schedules and rollback.

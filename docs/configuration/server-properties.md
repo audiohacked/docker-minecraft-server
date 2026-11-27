@@ -78,6 +78,12 @@ To produce a multi-line MOTD, embed a newline character as `\n` in the string, s
     -e MOTD="Line one\nLine two"
     ```
     
+    From bash shell
+    
+    ```
+    -e MOTD=$'Line one\nLine two'
+    ```
+    
     or within a compose file
     
     ```yaml
@@ -162,7 +168,9 @@ To [enforce the whitelist changes immediately](https://minecraft.wiki/w/Server.p
 
 !!! tip "Changing user API provider"
 
-    The usernames provided for whitelist and ops processing are resolved using either [PlayerDB](https://playerdb.co/) or [Mojang's API](https://wiki.vg/Mojang_API#Username_to_UUID). The default uses PlayerDB, but can be changed by setting the environment variable `USER_API_PROVIDER` to "mojang". Sometimes one or the other service can become overloaded, which is why there is the ability to switch providers.
+    When specifying usernames for whitelist and ops processing, use Minecraft: Java Edition profile names, not Xbox gamertags. They can differ even when they belong to the same Microsoft account. A player can review or change their Java profile name on the [Minecraft profile page](https://www.minecraft.net/en-us/msaprofile/mygames/editprofile).
+
+    Usernames are resolved using either [PlayerDB](https://playerdb.co/) or [Mojang's API](https://wiki.vg/Mojang_API#Username_to_UUID). The default uses PlayerDB, but can be changed by setting the environment variable `USER_API_PROVIDER` to "mojang". Sometimes one or the other service can become overloaded, which is why there is the ability to switch providers.
 
 
 ### Op/Administrator Players
@@ -380,13 +388,11 @@ You can enforce the resource pack on clients by setting `RESOURCE_PACK_ENFORCE` 
 
 ### Level / World Save Name
 
-You can either switch between world saves or run multiple containers with different saves by using the `LEVEL` option,
-where the default is "world":
+You can switch between world saves by setting `LEVEL`, which maps to the [level-name](https://minecraft.wiki/w/Server.properties#level-name) property. The default is "world":
 
     docker run -d -e LEVEL=bonus ...
 
-> **NOTE:** if running multiple containers be sure to either specify a different `-v` host directory for each
-`LEVEL` in use or don't use `-v` and the container's filesystem will keep things encapsulated.
+> **NOTE:** Make sure two or more containers are not using the same data volume.
 
 > **INFO** Refer to the [data directory](../data-directory.md) section for a visual description of where the `$LEVEL` directory is situated.
 

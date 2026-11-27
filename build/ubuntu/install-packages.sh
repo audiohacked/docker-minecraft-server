@@ -14,8 +14,10 @@ apt-get install -y \
   sudo \
   net-tools \
   iputils-ping \
+  iproute2 \
   curl \
   git \
+  git-lfs \
   jq \
   dos2unix \
   mysql-client \
@@ -26,20 +28,22 @@ apt-get install -y \
   zstd \
   lbzip2 \
   nfs-common \
-  libpcap0.8 \
+  'libpcap0.8*' \
   libnuma1 \
+  libcap2-bin \
+  jattach \
   ${EXTRA_DEB_PACKAGES}
-
-# Install Git LFS
-curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | sudo bash
-apt-get update
-apt-get install -y git-lfs
 
 # Clean up APT when done
 apt-get clean
 
+if [ "$TARGETARCH" = riscv64 ]; then
+  KNOCKD_REPO_ORG=Opvolger/knock
+fi
 # Download and install patched knockd
-curl -fsSL -o /tmp/knock.tar.gz https://github.com/Metalcape/knock/releases/download/0.8.1/knock-0.8.1-$TARGET.tar.gz
+knockdUrl="https://github.com/${KNOCKD_REPO_ORG}/releases/download/${KNOCKD_VERSION}/knock-${KNOCKD_VERSION}-$TARGET.tar.gz"
+echo "Downloading knockd from $knockdUrl"
+curl -fsSL -o /tmp/knock.tar.gz "$knockdUrl"
 tar -xf /tmp/knock.tar.gz -C /usr/local/ && rm /tmp/knock.tar.gz
 ln -s /usr/local/sbin/knockd /usr/sbin/knockd
 setcap cap_net_raw=ep /usr/local/sbin/knockd
@@ -51,3 +55,4 @@ cat <<EOF >> /etc/gitconfig
 	name = Minecraft Server on Docker
 	email = server@example.com
 EOF
+git lfs install

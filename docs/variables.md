@@ -65,19 +65,19 @@ alternatively, you can mount: <code>/etc/localtime:/etc/localtime:ro
         </tr>
         <tr>
             <td><code>LOG_CONSOLE_FORMAT</code></td>
-            <td>Log4j2 pattern for console output (what you see in <code>docker logs</code>)</td>
+            <td>Log4j2 pattern for console output (what you see in <code>docker logs</code>), or <code>json</code> for <a href="../configuration/misc-options/#json-log-output">JSON lines</a></td>
             <td><code>[%d{HH:mm:ss}] [%t/%level]: %msg%n</code></td>
             <td>⬜️</td>
         </tr>
         <tr>
             <td><code>LOG_FILE_FORMAT</code></td>
-            <td>Log4j2 pattern for file logs (written to <code>logs/latest.log</code>)</td>
+            <td>Log4j2 pattern for file logs (written to <code>logs/latest.log</code>), or <code>json</code> for <a href="../configuration/misc-options/#json-log-output">JSON lines</a></td>
             <td><code>[%d{HH:mm:ss}] [%t/%level]: %msg%n</code></td>
             <td>⬜️</td>
         </tr>
         <tr>
             <td><code>LOG_TERMINAL_FORMAT</code></td>
-            <td>Log4j2 pattern for interactive terminal console (used with <code>docker attach</code>)</td>
+            <td>Log4j2 pattern for interactive terminal console (used with <code>docker attach</code>), or <code>json</code> for <a href="../configuration/misc-options/#json-log-output">JSON lines</a></td>
             <td><code>[%d{HH:mm:ss} %level]: %msg%n</code></td>
             <td>⬜️</td>
         </tr>
@@ -130,6 +130,12 @@ alternatively, you can mount: <code>/etc/localtime:/etc/localtime:ro
             <td>⬜️</td>
         </tr>
         <tr>
+            <td><code>USE_MEOWICE_ZGC_FLAGS</code></td>
+            <td>uses the ZGC version of MeowIce's flags instead of the G1 version when USE_MEOWICE_FLAGS is also TRUE</td>
+            <td><code>false</code></td>
+            <td>⬜️</td>
+        </tr>
+        <tr>
             <td><code>JVM_OPTS</code></td>
             <td>General JVM options can be passed to the Minecraft Server invocation by passing a <code>JVM_OPTS</code> environment variable. The JVM requires -XX options to precede -X options, so those can be declared in <code>JVM_XX_OPTS</code>. Both variables are space-delimited, raw JVM arguments</td>
             <td><code></code></td>
@@ -144,6 +150,18 @@ alternatively, you can mount: <code>/etc/localtime:/etc/localtime:ro
         <tr>
             <td><code>JVM_DD_OPTS</code></td>
             <td>As a shorthand for passing several system properties as -D arguments, you can instead pass a comma separated list of name=value or name:value pairs with JVM_DD_OPTS. (The colon syntax is provided for management platforms like Plesk that don't allow = inside a value.)</td>
+            <td><code></code></td>
+            <td>⬜️</td>
+        </tr>
+        <tr>
+            <td><code>JAVA_AGENTS</code></td>
+            <td>Comma or newline delimited list of Java agent jar URLs, container paths to jars, or container paths to directories of jars, which are loaded with <code>-javaagent</code></td>
+            <td><code></code></td>
+            <td>⬜️</td>
+        </tr>
+        <tr>
+            <td><code>JVM_AGENTS</code></td>
+            <td>Comma or newline delimited list of native JVM agent URLs, container paths to agents, or container paths to directories of <code>.so</code> agents, which are loaded with <code>-agentpath</code></td>
             <td><code></code></td>
             <td>⬜️</td>
         </tr>
@@ -205,6 +223,12 @@ alternatively, you can mount: <code>/etc/localtime:/etc/localtime:ro
             <td>⬜️</td>
         </tr>
         <tr>
+            <td><code>HARDCORE</code></td>
+            <td>Enable hardcore mode. Set to <code>true</code> or <code>false</code>. This maps to the Minecraft server property <code>hardcore</code>.</td>
+            <td><code>false</code></td>
+            <td>⬜️</td>
+        </tr>
+        <tr>
             <td><code>ICON</code></td>
             <td>The url or file path for the icon image to use for the server. It will be downloaded, scaled, and converted to the proper format.</td>
             <td><code></code></td>
@@ -230,7 +254,7 @@ alternatively, you can mount: <code>/etc/localtime:/etc/localtime:ro
         </tr>
         <tr>
             <td><code>LEVEL</code></td>
-            <td>Maps to <a href="https://minecraft.wiki/w/Server.properties#level-name">the <code>level-name</code> server property</a>. You can either switch between world saves or run multiple containers with different saves by using the LEVEL option</td>
+            <td>Maps to <a href="https://minecraft.wiki/w/Server.properties#level-name">the <code>level-name</code> server property</a>. You can switch between world saves by using the LEVEL option</td>
             <td><code>world</code></td>
             <td>⬜️</td>
         </tr>
@@ -243,6 +267,12 @@ alternatively, you can mount: <code>/etc/localtime:/etc/localtime:ro
         <tr>
             <td><code>STOP_SERVER_ANNOUNCE_DELAY</code></td>
             <td>To allow time for players to finish what they're doing during a graceful server shutdown, set <code>STOP_SERVER_ANNOUNCE_DELAY</code> to a number of seconds to delay after an announcement is posted by the server.</td>
+            <td><code></code></td>
+            <td>⬜️</td>
+        </tr>
+        <tr>
+            <td><code>STOP_SERVER_DELAY_COMMAND</code></td>
+            <td>To set a custom command to run at the start of this delay period, set <code>STOP_SERVER_DELAY_COMMAND</code> to the full command. This will run in place of the announcement.</td>
             <td><code></code></td>
             <td>⬜️</td>
         </tr>
@@ -274,6 +304,12 @@ alternatively, you can mount: <code>/etc/localtime:/etc/localtime:ro
             <td><code>SETUP_ONLY</code></td>
             <td>If you are using a host-attached data directory, then you can have the image setup the Minecraft server files and stop prior to launching the server process by setting this to <code>true</code></td>
             <td><code>false</code></td>
+            <td>⬜️</td>
+        </tr>
+        <tr>
+            <td><code>PRE_START_SCRIPT</code></td>
+            <td>Path to an executable run after setup and just before the server starts. The server is not started if it exits non-zero. See <a href="../configuration/misc-options/#pre-start-script">Pre-start script</a></td>
+            <td><code></code></td>
             <td>⬜️</td>
         </tr>
         <tr>
@@ -605,7 +641,7 @@ This image maps known server properties as described in [this section](configura
         </tr>
         <tr>
             <td><code>CF_FILENAME_MATCHER</code></td>
-            <td>Specify a substring to match the desired filename</td>
+            <td>Specify either a substring or a regex pattern surrounded with "/" to match the desired filename</td>
             <td><code></code></td>
             <td>⬜️</td>
         </tr>
